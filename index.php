@@ -1,32 +1,24 @@
 <?php
-// ─── CONFIG ───────────────────────────────────────────────
-// After deploying to Hugging Face, replace this URL:
 $API_URL = "https://rorrenzz-rice-classifier.hf.space/predict";
-// ──────────────────────────────────────────────────────────
 
-$result     = null;
-$error      = null;
-$preview    = null;
+$result  = null;
+$error   = null;
+$preview = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['image'])) {
     $file = $_FILES['image'];
-
     if ($file['error'] === UPLOAD_ERR_OK) {
-        // Validate image
-        $allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        $allowed = ['image/jpeg','image/jpg','image/png','image/webp'];
         $finfo   = finfo_open(FILEINFO_MIME_TYPE);
         $mime    = finfo_file($finfo, $file['tmp_name']);
         finfo_close($finfo);
 
         if (in_array($mime, $allowed)) {
-            // Base64 preview for display
-            $imgData   = file_get_contents($file['tmp_name']);
-            $preview   = 'data:' . $mime . ';base64,' . base64_encode($imgData);
+            $imgData = file_get_contents($file['tmp_name']);
+            $preview = 'data:' . $mime . ';base64,' . base64_encode($imgData);
 
-            // Send to Python API
-            $curl = curl_init();
+            $curl  = curl_init();
             $cfile = new CURLFile($file['tmp_name'], $mime, $file['name']);
-
             curl_setopt_array($curl, [
                 CURLOPT_URL            => $API_URL,
                 CURLOPT_RETURNTRANSFER => true,
@@ -34,18 +26,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['image'])) {
                 CURLOPT_POSTFIELDS     => ['image' => $cfile],
                 CURLOPT_TIMEOUT        => 30,
             ]);
-
             $response = curl_exec($curl);
             $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
             curl_close($curl);
 
             if ($response && $httpCode === 200) {
                 $data = json_decode($response, true);
-                if (isset($data['prediction'])) {
-                    $result = $data;
-                } else {
-                    $error = "Unexpected response from the model.";
-                }
+                if (isset($data['prediction'])) $result = $data;
+                else $error = "Unexpected response from model.";
             } else {
                 $error = "Could not connect to the model API. Please try again.";
             }
@@ -56,536 +44,576 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['image'])) {
         $error = "File upload failed. Please try again.";
     }
 }
+
+$isHealthy  = $result && $result['prediction'] === 'Healthy';
+$isUnhealthy= $result && $result['prediction'] === 'Unhealthy';
+$confidence = $result ? $result['confidence'] : 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rice Plant Health Classifier — Group 11</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CropCheck AI — Rice Plant Health Classifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
-    :root {
-      --pup-maroon:  #7B1113;
-      --pup-dark:    #5A0C0E;
-      --pup-light:   #F9F2F2;
-      --pup-accent:  #C8303A;
-      --healthy:     #1A7A4A;
-      --unhealthy:   #C8303A;
-      --text:        #1C1C1E;
-      --text-muted:  #6E6E73;
-      --border:      #E5E1E0;
-      --bg:          #FAFAF8;
-      --card:        #FFFFFF;
-    }
+:root{
+  --green-900:#0a1f0e;
+  --green-800:#122a16;
+  --green-700:#1a3d1f;
+  --green-600:#1f5c28;
+  --green-500:#2a7a34;
+  --green-400:#3a9e46;
+  --green-300:#5cbe68;
+  --green-100:#c8f0cc;
+  --accent:#4ade6e;
+  --accent-dark:#2fb84a;
+  --gold:#f0c040;
+  --red:#e84040;
+  --red-light:#fff0f0;
+  --white:#ffffff;
+  --glass:rgba(10,31,14,0.72);
+  --glass-light:rgba(255,255,255,0.07);
+  --glass-border:rgba(255,255,255,0.12);
+}
 
-    body {
-      font-family: 'DM Sans', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-    }
+body{
+  font-family:'Outfit',sans-serif;
+  background:var(--green-900);
+  color:var(--white);
+  min-height:100vh;
+  overflow-x:hidden;
+}
 
-    /* ── HEADER ── */
-    header {
-      background: var(--pup-maroon);
-      padding: 0 2rem;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      height: 68px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    }
+/* ── HERO BG ── */
+.hero-bg{
+  position:fixed;
+  inset:0;
+  background:
+    linear-gradient(180deg,rgba(10,31,14,0.55) 0%,rgba(10,31,14,0.82) 60%,rgba(10,31,14,0.97) 100%),
+    url('https://images.unsplash.com/photo-1536304929831-ee1ca9d44906?w=1600&q=80') center/cover no-repeat;
+  z-index:0;
+}
 
-    .header-logo {
-      width: 40px;
-      height: 40px;
-      background: #fff;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 13px;
-      color: var(--pup-maroon);
-      flex-shrink: 0;
-      letter-spacing: -0.5px;
-    }
+.hero-bg::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(42,122,52,0.18) 0%,transparent 70%);
+}
 
-    .header-title {
-      font-family: 'DM Serif Display', serif;
-      color: #fff;
-      font-size: 1.15rem;
-      line-height: 1.2;
-    }
+/* ── LAYOUT ── */
+.page{position:relative;z-index:1;min-height:100vh}
 
-    .header-sub {
-      color: rgba(255,255,255,0.65);
-      font-size: 0.75rem;
-      margin-top: 1px;
-    }
+/* ── NAVBAR ── */
+nav{
+  display:flex;
+  align-items:center;
+  padding:1.25rem 3rem;
+  border-bottom:1px solid var(--glass-border);
+  backdrop-filter:blur(12px);
+  background:rgba(10,31,14,0.5);
+  position:sticky;
+  top:0;
+  z-index:100;
+}
 
-    .header-badge {
-      margin-left: auto;
-      background: rgba(255,255,255,0.15);
-      color: #fff;
-      font-size: 0.72rem;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-weight: 500;
-    }
+.nav-brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:1.25rem;
+  font-weight:700;
+  letter-spacing:-0.3px;
+}
 
-    /* ── HERO ── */
-    .hero {
-      background: linear-gradient(135deg, var(--pup-dark) 0%, var(--pup-maroon) 60%, var(--pup-accent) 100%);
-      padding: 3.5rem 2rem;
-      text-align: center;
-      color: #fff;
-    }
+.nav-brand .leaf{
+  width:34px;height:34px;
+  background:var(--accent);
+  border-radius:50% 50% 50% 8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;
+}
 
-    .hero-eyebrow {
-      font-size: 0.78rem;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.65);
-      margin-bottom: 0.75rem;
-    }
+.nav-brand span{color:var(--accent)}
 
-    .hero h1 {
-      font-family: 'DM Serif Display', serif;
-      font-size: clamp(1.8rem, 5vw, 2.8rem);
-      margin-bottom: 0.75rem;
-      line-height: 1.15;
-    }
+.nav-right{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:0.5rem;
+}
 
-    .hero p {
-      color: rgba(255,255,255,0.75);
-      font-size: 1rem;
-      max-width: 500px;
-      margin: 0 auto;
-      line-height: 1.6;
-    }
+.pup-badge{
+  background:rgba(123,17,19,0.85);
+  border:1px solid rgba(200,80,80,0.35);
+  color:#ffcccc;
+  font-size:0.72rem;
+  font-weight:600;
+  padding:5px 12px;
+  border-radius:20px;
+  letter-spacing:0.5px;
+}
 
-    /* ── STATS BAR ── */
-    .stats-bar {
-      background: var(--card);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: center;
-      gap: 0;
-    }
+/* ── HERO HEADER ── */
+.hero-header{
+  text-align:center;
+  padding:4rem 2rem 2.5rem;
+}
 
-    .stat-item {
-      padding: 1rem 2.5rem;
-      text-align: center;
-      border-right: 1px solid var(--border);
-    }
+.hero-eyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  background:rgba(74,222,110,0.12);
+  border:1px solid rgba(74,222,110,0.25);
+  color:var(--accent);
+  font-size:0.72rem;
+  font-weight:600;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  padding:6px 16px;
+  border-radius:20px;
+  margin-bottom:1.25rem;
+}
 
-    .stat-item:last-child { border-right: none; }
+.hero-header h1{
+  font-size:clamp(2rem,5vw,3.2rem);
+  font-weight:800;
+  letter-spacing:-1px;
+  line-height:1.1;
+  margin-bottom:0.75rem;
+}
 
-    .stat-val {
-      font-family: 'DM Serif Display', serif;
-      font-size: 1.5rem;
-      color: var(--pup-maroon);
-      line-height: 1;
-    }
+.hero-header h1 span{color:var(--accent)}
 
-    .stat-label {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      margin-top: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-    }
+.hero-header p{
+  color:rgba(255,255,255,0.55);
+  font-size:1rem;
+  max-width:520px;
+  margin:0 auto 2.5rem;
+  line-height:1.65;
+  font-weight:300;
+}
 
-    /* ── MAIN LAYOUT ── */
-    main {
-      max-width: 960px;
-      margin: 2.5rem auto;
-      padding: 0 1.5rem;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-      align-items: start;
-    }
+/* ── STATS ROW ── */
+.stats-row{
+  display:flex;
+  justify-content:center;
+  gap:1rem;
+  flex-wrap:wrap;
+  margin-bottom:3rem;
+}
 
-    @media (max-width: 640px) {
-      main { grid-template-columns: 1fr; }
-      .stats-bar { flex-wrap: wrap; }
-      .stat-item { flex: 1 1 50%; border-right: none; border-bottom: 1px solid var(--border); }
-    }
+.stat-pill{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:var(--glass-light);
+  border:1px solid var(--glass-border);
+  backdrop-filter:blur(8px);
+  padding:8px 18px;
+  border-radius:30px;
+  font-size:0.82rem;
+}
 
-    /* ── CARD ── */
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 1.75rem;
-    }
+.stat-pill .val{
+  font-weight:700;
+  color:var(--accent);
+  font-size:0.95rem;
+}
 
-    .card-title {
-      font-weight: 600;
-      font-size: 1rem;
-      margin-bottom: 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--text);
-    }
+/* ── MAIN CARD AREA ── */
+.main-area{
+  max-width:1000px;
+  margin:0 auto;
+  padding:0 1.5rem 4rem;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1.25rem;
+  align-items:start;
+}
 
-    .card-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      background: var(--pup-light);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-    }
+@media(max-width:680px){
+  .main-area{grid-template-columns:1fr}
+  nav{padding:1rem 1.25rem}
+  .hero-header{padding:2.5rem 1.25rem 1.5rem}
+}
 
-    /* ── UPLOAD ZONE ── */
-    .upload-zone {
-      border: 2px dashed var(--border);
-      border-radius: 12px;
-      padding: 2rem 1rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      position: relative;
-      background: var(--bg);
-    }
+/* ── GLASS CARD ── */
+.card{
+  background:var(--glass);
+  border:1px solid var(--glass-border);
+  border-radius:20px;
+  padding:1.75rem;
+  backdrop-filter:blur(16px);
+}
 
-    .upload-zone:hover,
-    .upload-zone.dragover {
-      border-color: var(--pup-maroon);
-      background: var(--pup-light);
-    }
+.card-label{
+  font-size:0.7rem;
+  font-weight:700;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:1.1rem;
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
 
-    .upload-zone input[type="file"] {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-      width: 100%;
-      height: 100%;
-    }
+.card-label::before{
+  content:'';
+  width:16px;height:2px;
+  background:var(--accent);
+  border-radius:2px;
+  display:block;
+}
 
-    .upload-icon {
-      font-size: 2.5rem;
-      margin-bottom: 0.5rem;
-    }
+/* ── UPLOAD ZONE ── */
+.upload-zone{
+  border:1.5px dashed rgba(74,222,110,0.3);
+  border-radius:14px;
+  padding:2rem 1rem;
+  text-align:center;
+  cursor:pointer;
+  transition:all 0.2s;
+  position:relative;
+  background:rgba(74,222,110,0.03);
+}
 
-    .upload-text {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
+.upload-zone:hover,.upload-zone.dragover{
+  border-color:var(--accent);
+  background:rgba(74,222,110,0.07);
+}
 
-    .upload-text strong {
-      color: var(--pup-maroon);
-    }
+.upload-zone input[type="file"]{
+  position:absolute;inset:0;
+  opacity:0;cursor:pointer;
+  width:100%;height:100%;
+}
 
-    /* ── PREVIEW ── */
-    .preview-wrap {
-      margin-top: 1rem;
-      border-radius: 10px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      background: #f5f5f5;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 160px;
-    }
+.upload-icon-wrap{
+  width:56px;height:56px;
+  border-radius:50%;
+  background:rgba(74,222,110,0.1);
+  border:1px solid rgba(74,222,110,0.2);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 0.85rem;
+  font-size:1.6rem;
+}
 
-    .preview-wrap img {
-      width: 100%;
-      max-height: 220px;
-      object-fit: contain;
-      display: block;
-    }
+.upload-text{
+  font-size:0.88rem;
+  color:rgba(255,255,255,0.5);
+  line-height:1.6;
+}
 
-    /* ── SUBMIT BTN ── */
-    .btn-submit {
-      margin-top: 1rem;
-      width: 100%;
-      padding: 0.85rem;
-      background: var(--pup-maroon);
-      color: #fff;
-      font-family: 'DM Sans', sans-serif;
-      font-weight: 600;
-      font-size: 0.95rem;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: background 0.2s, transform 0.1s;
-      letter-spacing: 0.3px;
-    }
+.upload-text strong{color:var(--accent);font-weight:600}
 
-    .btn-submit:hover  { background: var(--pup-dark); }
-    .btn-submit:active { transform: scale(0.98); }
-    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+/* ── PREVIEW ── */
+.preview-box{
+  margin-top:1rem;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid var(--glass-border);
+  background:rgba(0,0,0,0.3);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:140px;
+}
 
-    /* ── RESULT CARD ── */
-    .result-empty {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 260px;
-      color: var(--text-muted);
-      text-align: center;
-      gap: 0.5rem;
-    }
+.preview-box img{
+  width:100%;
+  max-height:200px;
+  object-fit:contain;
+  display:block;
+}
 
-    .result-empty .big-icon { font-size: 3rem; opacity: 0.3; }
+/* ── ANALYZE BTN ── */
+.btn-analyze{
+  margin-top:1rem;
+  width:100%;
+  padding:0.9rem;
+  background:var(--accent);
+  color:var(--green-900);
+  font-family:'Outfit',sans-serif;
+  font-weight:700;
+  font-size:0.95rem;
+  letter-spacing:0.5px;
+  border:none;
+  border-radius:12px;
+  cursor:pointer;
+  transition:all 0.2s;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
 
-    .result-box {
-      border-radius: 12px;
-      padding: 1.5rem;
-      text-align: center;
-    }
+.btn-analyze:hover{background:var(--accent-dark);color:#fff}
+.btn-analyze:active{transform:scale(0.98)}
+.btn-analyze:disabled{opacity:0.5;cursor:not-allowed}
 
-    .result-box.healthy {
-      background: #F0FAF4;
-      border: 1px solid #A8DCC0;
-    }
+/* ── RESULT ── */
+.result-empty{
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  min-height:320px;
+  text-align:center;
+  color:rgba(255,255,255,0.25);
+  gap:0.75rem;
+}
 
-    .result-box.unhealthy {
-      background: #FEF2F2;
-      border: 1px solid #F5C6C6;
-    }
+.result-empty .big{font-size:3.5rem;opacity:0.4}
 
-    .result-emoji { font-size: 3rem; margin-bottom: 0.5rem; }
+.result-banner{
+  border-radius:14px;
+  padding:1.25rem 1.5rem;
+  margin-bottom:1.25rem;
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
 
-    .result-label {
-      font-family: 'DM Serif Display', serif;
-      font-size: 1.8rem;
-      font-weight: 400;
-    }
+.result-banner.healthy{
+  background:rgba(74,222,110,0.12);
+  border:1px solid rgba(74,222,110,0.3);
+}
 
-    .result-label.healthy   { color: var(--healthy); }
-    .result-label.unhealthy { color: var(--unhealthy); }
+.result-banner.unhealthy{
+  background:rgba(232,64,64,0.12);
+  border:1px solid rgba(232,64,64,0.35);
+}
 
-    .result-confidence {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-top: 0.35rem;
-    }
+.result-emoji{font-size:2.2rem;flex-shrink:0}
 
-    /* ── CONFIDENCE BAR ── */
-    .conf-bar-wrap {
-      margin-top: 1.25rem;
-    }
+.result-label-wrap{}
 
-    .conf-bar-label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      margin-bottom: 6px;
-    }
+.result-tag{
+  font-size:0.65rem;
+  font-weight:700;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:rgba(255,255,255,0.45);
+  margin-bottom:2px;
+}
 
-    .conf-bar-track {
-      height: 8px;
-      background: #E8E8E8;
-      border-radius: 99px;
-      overflow: hidden;
-    }
+.result-label{
+  font-size:1.6rem;
+  font-weight:800;
+  letter-spacing:-0.5px;
+}
 
-    .conf-bar-fill {
-      height: 100%;
-      border-radius: 99px;
-      transition: width 0.6s ease;
-    }
+.result-label.healthy{color:var(--accent)}
+.result-label.unhealthy{color:#f07070}
 
-    .conf-bar-fill.healthy   { background: var(--healthy); }
-    .conf-bar-fill.unhealthy { background: var(--unhealthy); }
+/* ── CONFIDENCE BAR ── */
+.conf-section{margin-bottom:1.25rem}
 
-    /* ── DETAILS TABLE ── */
-    .details-table {
-      margin-top: 1.25rem;
-      width: 100%;
-      font-size: 0.83rem;
-      border-collapse: collapse;
-    }
+.conf-head{
+  display:flex;justify-content:space-between;
+  font-size:0.78rem;
+  color:rgba(255,255,255,0.45);
+  margin-bottom:7px;
+}
 
-    .details-table td {
-      padding: 7px 0;
-      border-bottom: 1px solid var(--border);
-    }
+.conf-head strong{color:var(--white);font-size:0.9rem}
 
-    .details-table td:first-child {
-      color: var(--text-muted);
-      width: 48%;
-    }
+.conf-track{
+  height:8px;
+  background:rgba(255,255,255,0.08);
+  border-radius:99px;
+  overflow:hidden;
+}
 
-    .details-table td:last-child {
-      text-align: right;
-      font-weight: 500;
-    }
+.conf-fill{
+  height:100%;
+  border-radius:99px;
+  transition:width 0.8s cubic-bezier(.22,.68,0,1.2);
+}
 
-    .details-table tr:last-child td { border-bottom: none; }
+.conf-fill.healthy{background:linear-gradient(90deg,#2fb84a,#4ade6e)}
+.conf-fill.unhealthy{background:linear-gradient(90deg,#c03030,#f07070)}
 
-    /* ── ERROR ── */
-    .error-box {
-      background: #FEF2F2;
-      border: 1px solid #F5C6C6;
-      border-radius: 10px;
-      padding: 1rem 1.25rem;
-      font-size: 0.875rem;
-      color: #B91C1C;
-      display: flex;
-      gap: 8px;
-      align-items: flex-start;
-      margin-top: 1rem;
-    }
+/* ── DETAILS TABLE ── */
+.details{width:100%;border-collapse:collapse;font-size:0.82rem}
 
-    /* ── HOW IT WORKS ── */
-    .how-section {
-      grid-column: 1 / -1;
-      margin-top: 0.5rem;
-    }
+.details td{
+  padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,0.07);
+}
 
-    .steps-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 1rem;
-      margin-top: 1rem;
-    }
+.details td:first-child{color:rgba(255,255,255,0.4);width:50%}
+.details td:last-child{text-align:right;font-weight:600;color:rgba(255,255,255,0.9)}
+.details tr:last-child td{border-bottom:none}
 
-    .step-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.25rem 1rem;
-      text-align: center;
-    }
+/* ── DIAGNOSIS BOX ── */
+.diagnosis-box{
+  margin-top:1.25rem;
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;
+  padding:1rem 1.25rem;
+}
 
-    .step-num {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background: var(--pup-maroon);
-      color: #fff;
-      font-size: 0.8rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 0.75rem;
-    }
+.diag-title{
+  font-size:0.7rem;
+  font-weight:700;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  color:rgba(255,255,255,0.35);
+  margin-bottom:0.5rem;
+}
 
-    .step-title {
-      font-weight: 600;
-      font-size: 0.88rem;
-      margin-bottom: 0.3rem;
-    }
+.diag-name{
+  font-size:1rem;
+  font-weight:700;
+  color:var(--white);
+  margin-bottom:0.4rem;
+}
 
-    .step-desc {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
+.diag-rec{
+  font-size:0.8rem;
+  color:rgba(255,255,255,0.45);
+  line-height:1.7;
+}
 
-    /* ── FOOTER ── */
-    footer {
-      text-align: center;
-      padding: 2.5rem 1rem;
-      color: var(--text-muted);
-      font-size: 0.78rem;
-      border-top: 1px solid var(--border);
-      margin-top: 2rem;
-    }
+.diag-rec li{list-style:none;padding-left:1rem;position:relative}
+.diag-rec li::before{content:'→';position:absolute;left:0;color:var(--accent);font-size:0.75rem}
 
-    footer strong { color: var(--pup-maroon); }
+/* ── ERROR ── */
+.error-box{
+  background:rgba(232,64,64,0.1);
+  border:1px solid rgba(232,64,64,0.3);
+  border-radius:10px;
+  padding:0.9rem 1.1rem;
+  font-size:0.85rem;
+  color:#f09090;
+  margin-top:1rem;
+  display:flex;gap:8px;align-items:flex-start;
+}
 
-    .spinner {
-      display: none;
-      width: 18px;
-      height: 18px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      margin: 0 auto;
-    }
+/* ── HOW IT WORKS ── */
+.how-section{
+  grid-column:1/-1;
+}
 
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+.how-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1rem;
+  margin-top:0;
+}
+
+.how-card{
+  background:var(--glass-light);
+  border:1px solid var(--glass-border);
+  border-radius:14px;
+  padding:1.25rem 1rem;
+  text-align:center;
+}
+
+.how-num{
+  width:32px;height:32px;
+  border-radius:50%;
+  background:rgba(74,222,110,0.15);
+  border:1px solid rgba(74,222,110,0.25);
+  color:var(--accent);
+  font-size:0.8rem;
+  font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 0.75rem;
+}
+
+.how-title{font-weight:600;font-size:0.88rem;margin-bottom:0.3rem}
+.how-desc{font-size:0.75rem;color:rgba(255,255,255,0.4);line-height:1.55}
+
+/* ── FOOTER ── */
+footer{
+  text-align:center;
+  padding:2rem 1rem;
+  border-top:1px solid rgba(255,255,255,0.06);
+  font-size:0.75rem;
+  color:rgba(255,255,255,0.25);
+  line-height:1.8;
+}
+
+footer strong{color:rgba(255,255,255,0.5)}
+
+/* ── SPINNER ── */
+.spinner{
+  display:none;
+  width:18px;height:18px;
+  border:2.5px solid rgba(10,31,14,0.3);
+  border-top-color:var(--green-900);
+  border-radius:50%;
+  animation:spin 0.6s linear infinite;
+}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
 
-<!-- HEADER -->
-<header>
-  <div class="header-logo">PUP</div>
-  <div>
-    <div class="header-title">Polytechnic University of the Philippines</div>
-    <div class="header-sub">BS Computer Science — Machine Learning Project</div>
-  </div>
-  <span class="header-badge">Group 11</span>
-</header>
+<div class="hero-bg"></div>
 
-<!-- HERO -->
-<div class="hero">
-  <p class="hero-eyebrow">Midterm Project</p>
-  <h1>🌾 Rice Plant Health Classifier</h1>
-  <p>Upload a photo of a rice plant and our trained SVM model will determine if it is healthy or unhealthy in seconds.</p>
-</div>
+<div class="page">
 
-<!-- STATS BAR -->
-<div class="stats-bar">
-  <div class="stat-item">
-    <div class="stat-val">94.17%</div>
-    <div class="stat-label">Model Accuracy</div>
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <div class="leaf">🌿</div>
+    CropCheck<span>AI</span>
   </div>
-  <div class="stat-item">
-    <div class="stat-val">600</div>
-    <div class="stat-label">Training Images</div>
+  <div class="nav-right">
+    <span class="pup-badge">PUP · GROUP 11</span>
   </div>
-  <div class="stat-item">
-    <div class="stat-val">SVM</div>
-    <div class="stat-label">Algorithm</div>
+</nav>
+
+<!-- HERO HEADER -->
+<div class="hero-header">
+  <div class="hero-eyebrow">
+    🌾 Midterm Project
   </div>
-  <div class="stat-item">
-    <div class="stat-val">RBF</div>
-    <div class="stat-label">Kernel</div>
+  <h1>Automated Rice Plant<br><span>Health Classification</span></h1>
+  <p>Machine Learning–powered rice health assessment using SVM with RGB, HOG, and LBP feature extraction.</p>
+
+  <div class="stats-row">
+    <div class="stat-pill"><span class="val">94.17%</span> Model Accuracy</div>
+    <div class="stat-pill"><span class="val">600</span> Training Images</div>
+    <div class="stat-pill"><span class="val">SVM</span> RBF Kernel</div>
+    <div class="stat-pill"><span class="val">2</span> Classes</div>
   </div>
 </div>
 
 <!-- MAIN -->
-<main>
+<div class="main-area">
 
-  <!-- LEFT: Upload Form -->
+  <!-- LEFT: Upload -->
   <div class="card">
-    <div class="card-title">
-      <div class="card-icon">📤</div>
-      Upload Rice Plant Image
-    </div>
+    <div class="card-label">Upload Image for Analysis</div>
 
     <form method="POST" enctype="multipart/form-data" id="uploadForm">
       <div class="upload-zone" id="dropZone">
         <input type="file" name="image" id="imageInput" accept="image/*" required>
-        <div class="upload-icon">🖼️</div>
+        <div class="upload-icon-wrap">📷</div>
         <div class="upload-text">
-          <strong>Click to upload</strong> or drag & drop<br>
-          JPG, PNG, or WebP accepted
+          <strong>Drag & Drop or Click to Upload</strong><br>
+          Rice Leaf or Plant Image<br>
+          <span style="font-size:0.75rem;opacity:0.6">JPG, PNG, WebP supported</span>
         </div>
       </div>
 
       <?php if ($preview): ?>
-      <div class="preview-wrap">
+      <div class="preview-box">
         <img src="<?= htmlspecialchars($preview) ?>" alt="Uploaded image preview">
       </div>
       <?php else: ?>
-      <div class="preview-wrap" id="previewWrap" style="display:none;">
+      <div class="preview-box" id="previewWrap" style="display:none">
         <img id="previewImg" src="" alt="Preview">
       </div>
       <?php endif; ?>
@@ -594,8 +622,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['image'])) {
       <div class="error-box">⚠️ <?= htmlspecialchars($error) ?></div>
       <?php endif; ?>
 
-      <button type="submit" class="btn-submit" id="submitBtn">
-        <span id="btnText">Analyze Plant</span>
+      <button type="submit" class="btn-analyze" id="submitBtn">
+        <span id="btnText">🔬 Analyze Plant</span>
         <div class="spinner" id="spinner"></div>
       </button>
     </form>
@@ -603,66 +631,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['image'])) {
 
   <!-- RIGHT: Result -->
   <div class="card">
-    <div class="card-title">
-      <div class="card-icon">🔍</div>
-      Classification Result
-    </div>
+    <div class="card-label">Classification Result</div>
 
     <?php if ($result): ?>
-      <?php
-        $isHealthy  = $result['prediction'] === 'Healthy';
-        $cls        = $isHealthy ? 'healthy' : 'unhealthy';
-        $emoji      = $isHealthy ? '🟢' : '🔴';
-        $confidence = $result['confidence'];
-      ?>
-      <div class="result-box <?= $cls ?>">
-        <div class="result-emoji"><?= $emoji ?></div>
-        <div class="result-label <?= $cls ?>"><?= htmlspecialchars($result['prediction']) ?></div>
-        <div class="result-confidence">Model confidence: <?= $confidence ?>%</div>
-
-        <div class="conf-bar-wrap">
-          <div class="conf-bar-label">
-            <span>Confidence</span>
-            <span><?= $confidence ?>%</span>
-          </div>
-          <div class="conf-bar-track">
-            <div class="conf-bar-fill <?= $cls ?>" style="width: <?= $confidence ?>%"></div>
+      <div class="result-banner <?= $isHealthy ? 'healthy' : 'unhealthy' ?>">
+        <div class="result-emoji"><?= $isHealthy ? '✅' : '❌' ?></div>
+        <div class="result-label-wrap">
+          <div class="result-tag">Classification</div>
+          <div class="result-label <?= $isHealthy ? 'healthy' : 'unhealthy' ?>">
+            <?= htmlspecialchars($result['prediction']) ?>
           </div>
         </div>
       </div>
 
-      <table class="details-table">
-        <tr>
-          <td>Prediction</td>
-          <td><?= htmlspecialchars($result['prediction']) ?></td>
-        </tr>
-        <tr>
-          <td>Confidence Score</td>
-          <td><?= $confidence ?>%</td>
-        </tr>
-        <tr>
-          <td>Algorithm</td>
-          <td>SVM (RBF Kernel)</td>
-        </tr>
-        <tr>
-          <td>Features Used</td>
-          <td>RGB + HOG + LBP</td>
-        </tr>
-        <tr>
-          <td>PCA Components</td>
-          <td>150</td>
-        </tr>
-        <tr>
-          <td>Training Accuracy</td>
-          <td>94.17%</td>
-        </tr>
+      <div class="conf-section">
+        <div class="conf-head">
+          <span>Confidence Score</span>
+          <strong><?= $confidence ?>%</strong>
+        </div>
+        <div class="conf-track">
+          <div class="conf-fill <?= $isHealthy ? 'healthy' : 'unhealthy' ?>"
+               style="width:<?= $confidence ?>%"></div>
+        </div>
+      </div>
+
+      <table class="details">
+        <tr><td>Result</td><td><?= htmlspecialchars($result['prediction']) ?></td></tr>
+        <tr><td>Confidence</td><td><?= $confidence ?>%</td></tr>
+        <tr><td>Algorithm</td><td>SVM (RBF Kernel)</td></tr>
+        <tr><td>Features</td><td>RGB + HOG + LBP</td></tr>
+        <tr><td>PCA Components</td><td>150</td></tr>
+        <tr><td>Model Accuracy</td><td>94.17%</td></tr>
       </table>
+
+      <div class="diagnosis-box">
+        <div class="diag-title">Diagnosis</div>
+        <?php if ($isHealthy): ?>
+          <div class="diag-name">Plant appears healthy</div>
+          <ul class="diag-rec">
+            <li>Continue regular irrigation schedule</li>
+            <li>Monitor for early signs of disease</li>
+            <li>Maintain proper fertilization</li>
+          </ul>
+        <?php else: ?>
+          <div class="diag-name">Disease indicators detected</div>
+          <ul class="diag-rec">
+            <li>Apply relevant bactericide or fungicide</li>
+            <li>Ensure proper field drainage</li>
+            <li>Consult an agricultural specialist</li>
+            <li>Isolate affected plants if possible</li>
+          </ul>
+        <?php endif; ?>
+      </div>
 
     <?php else: ?>
       <div class="result-empty">
-        <div class="big-icon">🌾</div>
-        <p style="font-weight:500">No image analyzed yet</p>
-        <p style="font-size:0.82rem">Upload a rice plant photo to see the classification result here.</p>
+        <div class="big">🌾</div>
+        <p style="font-weight:600;color:rgba(255,255,255,0.35);font-size:0.95rem">No image analyzed yet</p>
+        <p style="font-size:0.8rem">Upload a rice plant photo to see<br>the AI classification result here.</p>
       </div>
     <?php endif; ?>
   </div>
@@ -670,96 +696,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['image'])) {
   <!-- HOW IT WORKS -->
   <div class="how-section">
     <div class="card">
-      <div class="card-title">
-        <div class="card-icon">⚙️</div>
-        How It Works
-      </div>
-      <div class="steps-grid">
-        <div class="step-card">
-          <div class="step-num">1</div>
-          <div class="step-title">Image Upload</div>
-          <div class="step-desc">You upload a rice plant photo. PHP receives and validates the file.</div>
+      <div class="card-label">How It Works</div>
+      <div class="how-grid">
+        <div class="how-card">
+          <div class="how-num">1</div>
+          <div class="how-title">Image Upload</div>
+          <div class="how-desc">PHP receives and validates your rice plant photo securely.</div>
         </div>
-        <div class="step-card">
-          <div class="step-num">2</div>
-          <div class="step-title">Feature Extraction</div>
-          <div class="step-desc">RGB histogram, HOG edges, and LBP texture features are extracted from the image.</div>
+        <div class="how-card">
+          <div class="how-num">2</div>
+          <div class="how-title">Feature Extraction</div>
+          <div class="how-desc">RGB histogram, HOG edge features, and LBP texture patterns are extracted.</div>
         </div>
-        <div class="step-card">
-          <div class="step-num">3</div>
-          <div class="step-title">PCA Reduction</div>
-          <div class="step-desc">150 PCA components reduce feature dimensionality while keeping 95%+ variance.</div>
+        <div class="how-card">
+          <div class="how-num">3</div>
+          <div class="how-title">PCA Reduction</div>
+          <div class="how-desc">150 principal components reduce noise while keeping 95%+ variance.</div>
         </div>
-        <div class="step-card">
-          <div class="step-num">4</div>
-          <div class="step-title">SVM Prediction</div>
-          <div class="step-desc">The trained SVM model (RBF kernel, C=10) classifies the plant as healthy or not.</div>
+        <div class="how-card">
+          <div class="how-num">4</div>
+          <div class="how-title">SVM Prediction</div>
+          <div class="how-desc">Trained SVM model (C=10, RBF kernel) classifies the plant health status.</div>
         </div>
-        <div class="step-card">
-          <div class="step-num">5</div>
-          <div class="step-title">Result Display</div>
-          <div class="step-desc">PHP renders the prediction and confidence score back to you on this page.</div>
+        <div class="how-card">
+          <div class="how-num">5</div>
+          <div class="how-title">Result Display</div>
+          <div class="how-desc">Prediction, confidence score, and care recommendations are shown instantly.</div>
         </div>
       </div>
     </div>
   </div>
 
-</main>
+</div><!-- end main-area -->
 
 <footer>
   <strong>GROUP 11</strong> &mdash; BS Computer Science &mdash; Polytechnic University of the Philippines<br>
-  Rice Plant Health Classification using SVM &bull; Midterm Project &bull; 94.17% Accuracy
+  Rice Plant Health Classification &bull; SVM Machine Learning &bull; Midterm Project &bull; 94.17% Accuracy
 </footer>
 
+</div><!-- end page -->
+
 <script>
-  const input    = document.getElementById('imageInput');
-  const preview  = document.getElementById('previewImg');
-  const wrap     = document.getElementById('previewWrap');
-  const dropZone = document.getElementById('dropZone');
-  const form     = document.getElementById('uploadForm');
-  const btn      = document.getElementById('submitBtn');
-  const btnText  = document.getElementById('btnText');
-  const spinner  = document.getElementById('spinner');
+const input   = document.getElementById('imageInput');
+const preview = document.getElementById('previewImg');
+const wrap    = document.getElementById('previewWrap');
+const drop    = document.getElementById('dropZone');
+const form    = document.getElementById('uploadForm');
+const btn     = document.getElementById('submitBtn');
+const btnText = document.getElementById('btnText');
+const spinner = document.getElementById('spinner');
 
-  input?.addEventListener('change', function() {
-    if (this.files && this.files[0]) {
-      const reader = new FileReader();
-      reader.onload = e => {
-        if (preview && wrap) {
-          preview.src = e.target.result;
-          wrap.style.display = 'flex';
-        }
-      };
-      reader.readAsDataURL(this.files[0]);
-    }
-  });
+input?.addEventListener('change', function() {
+  if (this.files && this.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      if (preview && wrap) {
+        preview.src = e.target.result;
+        wrap.style.display = 'flex';
+      }
+    };
+    reader.readAsDataURL(this.files[0]);
+  }
+});
 
-  dropZone?.addEventListener('dragover', e => {
-    e.preventDefault();
-    dropZone.classList.add('dragover');
-  });
+drop?.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+drop?.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+drop?.addEventListener('drop', e => {
+  e.preventDefault();
+  drop.classList.remove('dragover');
+  if (e.dataTransfer.files[0] && input) {
+    const dt = new DataTransfer();
+    dt.items.add(e.dataTransfer.files[0]);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+  }
+});
 
-  dropZone?.addEventListener('dragleave', () => {
-    dropZone.classList.remove('dragover');
-  });
-
-  dropZone?.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    if (e.dataTransfer.files[0] && input) {
-      const dt = new DataTransfer();
-      dt.items.add(e.dataTransfer.files[0]);
-      input.files = dt.files;
-      input.dispatchEvent(new Event('change'));
-    }
-  });
-
-  form?.addEventListener('submit', () => {
-    if (btnText) btnText.style.display = 'none';
-    if (spinner) spinner.style.display = 'block';
-    if (btn) btn.disabled = true;
-  });
+form?.addEventListener('submit', () => {
+  if (btnText) btnText.style.display = 'none';
+  if (spinner) spinner.style.display = 'block';
+  if (btn) btn.disabled = true;
+});
 </script>
-
 </body>
 </html>
